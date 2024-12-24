@@ -1,6 +1,12 @@
 import { useSelector } from 'react-redux';
 import { useRef, useState, useEffect } from 'react';
-
+import {
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadBytesResumable,
+} from 'firebase/storage';
+import { app } from '../firebase';
 import {
   updateUserStart,
   updateUserSuccess,
@@ -36,35 +42,29 @@ export default function Profile() {
     }
   }, [file]);
 
-  const handleFileUpload = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', 'mern-estate'); // From your Cloudinary preset name
-  
-    try {
-      const res = await fetch(
-        'https://api.cloudinary.com/v1_1/dgcnsz9pl/image/upload', // Replace with your Cloudinary cloud name
-        {
-          method: 'POST',
-          body: formData,
-        }
-      );
-  
-      if (!res.ok) {
-        throw new Error('Failed to upload image to Cloudinary');
+  const handleFileUpload = (file) => {
+    const storage = getStorage(app);
+    const fileName = new Date().getTime() + file.name;
+    const storageRef = ref(storage, fileName);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const progress =
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setFilePerc(Math.round(progress));
+      },
+      (error) => {
+        setFileUploadError(true);
+      },
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) =>
+          setFormData({ ...formData, avatar: downloadURL })
+        );
       }
-  
-      const data = await res.json();
-      const downloadURL = data.secure_url;
-  
-      setFilePerc(100); // Upload complete
-      setFormData({ ...formData, avatar: downloadURL });
-    } catch (error) {
-      setFileUploadError(true);
-      console.error('Error uploading to Cloudinary:', error);
-    }
+    );
   };
-  
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
@@ -238,7 +238,7 @@ export default function Profile() {
         </span>
       </div>
 
-     <p className='text-red-700 mt-7'>{error ? error:''}</p>
+      <p className='text-red-700 mt-5'>{error ? error : ''}</p>
       <p className='text-green-700 mt-5'>
         {updateSuccess ? 'User is updated successfully!' : ''}
       </p>
